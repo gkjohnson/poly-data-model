@@ -1,0 +1,151 @@
+<link rel="import" href="../bower_components/polymer/polymer.html"/>
+<link rel="import" href="./poly-data-store.html"/>
+<script>
+    // Store an undo stack of all changes to the PolyData store
+    // data objecct, unless 'suspend' equals true
+    // Automatically sets itself to 'window.PolyUndo'
+    Polymer({
+        is: 'poly-data-undo',
+        properties: {
+            data        : {},
+            bindKeys    : {
+                type : Boolean,
+                value : true,
+                observer :'_bindKeysChange'
+            },
+            suspended   : {
+                type : Boolean,
+                value : false
+            },
+            _undostack  : {
+                type : Array
+            },
+            _redostack  : {
+                type : Array,
+                value : () => []
+            },
+            _stackDepth : {
+                type : Number,
+                value : 50
+            },
+            _ignoreChange : {
+                type : Boolean,
+                value : false
+            },
+            _keyHandler : { },
+        },
+        created : function() {
+            if(window.PolyUndo != null) {
+                console.error('PolyUndo alrady exists')
+                this.remove()
+                return
+            }
+            window.PolyUndo = this
+        },
+        ready : function() {
+            this._undostack = []
+            this._redostack = []
+            PolyData.subscribe('data', e => this._handleDataChange(e))
+            this._undostack = []
+
+            this._keyHandler = e => {
+                if (!e.ctrlKey) return
+
+                if (e.key.toLowerCase() === 'z' && e.shiftKey) {
+                    this.redo()
+                    e.preventDefault()
+                } else if (e.key.toLowerCase() === 'y') { 
+                    this.redo()
+                    e.preventDefault()
+                } else if (e.key.toLowerCase() === 'z') {
+                    this.undo()
+                    e.preventDefault()
+                }
+            }
+        },
+        _bindKeysChange : function(bk) {
+            document.removeEventListener('keydown', this._keyHandler)
+            if (bk) document.addEventListener('keydown', this._keyHandler)
+        },
+        _handleDataChange : function(e) {
+            if (this._ignoreChange || this.suspended) return
+
+            this._uniqueSet(e.detail.path, e.detail.data)
+        },
+        _uniqueSet : function(spath, sdata) {
+            const path = spath ? `data.${spath}` : 'data'
+
+            const toCopy = v => {
+                if (v instanceof Array) return [].concat(v)
+                if (v instanceof Object) return Object.assign({}, v)
+                return v
+            }
+            const recurseUnique = r => {
+                if (!(r instanceof Array) && !(r instanceof Object)) return
+                Object.keys(r).forEach(k => {
+                    r[k] = toCopy(r[k])
+                    recurseUnique(r[k])
+                })
+            }
+            let item = toCopy(sdata)
+            recurseUnique(item)
+
+            if (!this._ignoreChange && !this.suspended) this._pushToUndo(path, this.get(path))
+            this.set(path, item)
+        
+            this.data = Object.assign({}, this.data)
+            
+            if (spath) {
+                let tokens = PolyData._tokenizePath(spath)
+                let curr = this.data
+                let wasArray = false
+                while(tokens.length > 0) {
+                    let token = tokens.shift()
+                    if(wasArray) token = token.replace(/^#/, '')
+
+                    const val = curr[token]
+
+                    if(val instanceof Array) {
+                        curr[token] = [].concat(val)
+                        wasArray = true
+                    } else if(val instanceof Object) {
+                        curr[token] = Object.assign({}, val)
+                    }
+                    curr = curr[token]
+                }
+            }
+        },
+        _pushToUndo : function(path, val, fromredo) {
+            if (this._undostack.length > this._stackDepth) this._undostack.shift()
+            this._undostack.push({ path, val })
+
+            if (!fromredo && this._redostack.length !== 0) this._redostack = []
+        },
+        _pushToRedo : function(path, val, oldval) {
+            this._redostack.push({ path, val, oldval })
+        },
+        undo : function() {
+            if (this._undostack.length === 0) return
+
+            const op = this._undostack.pop()
+            this._pushToRedo(op.path, this.get(op.path), op.val)
+
+            this._ignoreChange = true
+            PolyData.set(op.path, op.val)
+            this._uniqueSet(op.path.replace(/^data./, ''), op.val)
+            this._ignoreChange = false
+        },
+        redo : function() {
+            if (this._redostack.length === 0) return
+
+            const op = this._redostack.pop()
+            this._pushToUndo(op.path, op.oldval, true)
+
+            this._ignoreChange = true
+            PolyData.set(op.path, op.val)
+            this._uniqueSet(op.path.replace(/^data./, ''), op.val)
+            this._ignoreChange = false
+        }
+    })
+    if(!window.PolyUndo) document.createElement('poly-data-undo')
+</script>

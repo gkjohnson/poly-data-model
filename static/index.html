@@ -1,0 +1,43 @@
+<!-- Doctype HTML -->
+<html>
+	<head>
+		<script src="bower_components/webcomponentsjs/webcomponents-lite.min.js"></script>
+		<link rel="import" href="./elements/poly-data-store.html">
+		<link rel="import" href="./elements/test-el.html">
+		<link rel="import" href="./elements/repeat-by-id.html">
+		<!-- <link rel="import" href="./elements/poly-data-bind.html"> -->
+		<script type="text/javascript">
+			PolyData.data = {
+				parameters : [
+					{name:'test1', val:1, bg:'background:#F00;'},
+					{name:'test2', val:2, bg:'background:#F00;'},
+					{name:'test3', val:3, bg:'background:#F00;'},
+					{name:'test4', val:5, bg:'background:#F00;'},
+					{name:'test5', val:6, bg:'background:#F00;'},
+				],
+				test : 100
+			}
+		</script>
+		<style type="text/css">
+			.row {
+				transition: all 1s ease;
+			}
+		</style>
+	</head>
+	<body>
+		<test-el data-root="data"></test-el>
+		<test-el data-root="data"></test-el>
+		<template is="dom-bind" id='test'>
+			<poly-data-proxy data-root="data" data="{{data}}" ></poly-data-proxy>
+			<object-repeat items="{{data.parameters}}" key="name">
+				<template>
+					<div style$="{{item.bg}}" class="row">{{item.name}} <input value="{{item.bg::input}}" /> </div>
+				</template>
+			</object-repeat>
+			<h3>DOM REPEAT</h3>
+			<template is="dom-repeat" items="{{data.parameters}}">
+				<div style$="{{item.bg}}" class="row">{{item.name}} <input value="{{item.bg::input}}" /> </div>
+			</template>
+		</template>
+	</body>
+</html>

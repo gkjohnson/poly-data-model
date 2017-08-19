@@ -1,0 +1,151 @@
+<link rel="import" href="../bower_components/polymer/polymer.html">
+<script>
+    // Data store for Polymer
+    // Automatically sets itself to 'window.PolyData'
+    Polymer({
+        is: 'poly-data-store',
+        properties : {
+            data : {
+                type: Object,
+                value: {}
+            }
+        },
+        observers : ['_dataChanged(data.*)'],
+        created : function(){
+            if (window.PolyData != null) {
+                console.error("PolyData already exists")
+                this.remove()
+                return
+            }
+
+            window.PolyData = this
+        },
+        // Subscribe/ Unsubscribe to data change events
+        // relative to the provided path. Must begin with
+        // "data."
+        subscribe : function(path, cb) {
+            window.addEventListener(this._toPrivatePath(path), cb)
+            cb(this._getCustomEvent(path, path))
+        },
+        unsubscribe : function(path, cb) {
+            window.removeEventListener(this._toPrivatePath(path), cb)
+        },
+
+        // Handles data change. Ignores array splice
+        // operations and instead just updates the entire
+        // array
+        _dataChanged : function(delta) {        	
+        	const arrayRegex = /(\.length|\.splices)$/
+        	const cleanPath = delta.path.replace(arrayRegex, '')
+        	const isArray = arrayRegex.test(delta.path) && this.get(cleanPath) instanceof Array
+            if (isArray) {
+            	this.set(cleanPath, [].concat(this.get(cleanPath)))
+            	return
+            }
+
+            const path = delta.path
+            const tokens = this._tokenizePath(path)
+            const paths = this._toPaths(tokens)
+            paths.forEach(p => window.dispatchEvent(this._getCustomEvent(p, path)))
+        },
+        _getCustomEvent : function(rootPath, dataPath) {
+            const data = this.get(dataPath)
+            const path = dataPath.substr(rootPath.length + 1, Infinity)
+            return new CustomEvent(this._toPrivatePath(rootPath), { detail : { path, data } })
+        },
+        _tokenizePath : path => {
+            return path.split(/\./g)
+        },
+        _toPaths : tokens => {
+            const arr = [tokens[0]]
+            let str = tokens[0]
+            for(let i = 1; i < tokens.length; i ++) {
+                str = [str, tokens[i]].join('.')
+                arr.push(str)
+            }
+            return arr
+        },
+        _toPrivatePath : path => `poly.${path}`
+    });
+
+    // Behavior that handles event subscribing and unsubscribing
+    // to and from PolyData store events. Keeps the 'data' object
+    // up to date relative to the 'data-root' path
+    PolyDataSubscriber = {
+        properties : {
+            dataRoot    : {
+                type        : String,
+                value       : '',
+                observer    : '_dataRootChanged'
+            },
+            data        : { 
+                type    : Object,
+                value   : null,
+                notify  : true
+            },
+            _dataCb 	: { },
+            _active 	: {
+            	type 	: Boolean,
+            	value 	: false
+            }
+        },
+        observers : ['_dataChanged(data.*)'],
+        created : function() {
+        	this._dataCb = e => this._handleDataChange(e)
+        },
+        attached : function() {
+        	this._active = true
+        	PolyData.subscribe(this.dataRoot, this._dataCb)
+        },
+        dettached : function() {
+        	PolyData.unsubscribe(this.dataRoot, this._dataCb)
+        	this.data = null
+        	this._active = false
+        },
+        _dataRootChanged : function (dr, oldDr) {
+            if (!this._active) return
+
+        	if (oldDr != null) PolyData.unsubscribe(oldDr, this._dataCb)
+        	PolyData.subscribe(dr, this._dataCb)
+        },
+        _handleDataChange : function (e) {
+            if (!this._active) return
+
+            const fullPath = e.detail.path ? `data.${e.detail.path}` : 'data'
+            this.set(fullPath, e.detail.data)
+        },
+        _dataChanged : function (delta) {
+            if (!this._active) return
+
+        	const arrayRegex = /(\.length|\.splices)$/
+        	const cleanPath = delta.path.replace(arrayRegex, '')
+        	const isArray = arrayRegex.test(delta.path) && this.get(cleanPath) instanceof Array
+            if (isArray) {
+           		this.set(cleanPath, [].concat(this.get(cleanPath)))
+            } else {
+            	const fullPath = this.dataRoot + delta.path.substr(4, Infinity)
+	        	PolyData.set(fullPath, this.get(delta.path))
+	        }
+        }
+    }
+
+    // Poly data bind proxy build for use with
+    // "dom-bind" templates and get the polydata
+    // model into the dom bind context:
+    // <template is="dom-if">
+    //      <poly-data-proxy data-root="data" data="{{data}}"/>
+    //      ... html bounds to {{data}} ...
+    // </template>
+    
+    // TODO : this doesn't seem to work when explicitly accessing
+    // array elements, like with {{data.arr.0.name}}, because 
+    // polymer is using its special hash key to throw an event...
+    Polymer({
+        is: 'poly-data-proxy',
+        behaviors: [PolyDataSubscriber]
+
+
+    })
+
+    if(!window.PolyData) document.createElement('poly-data-store')
+</script>

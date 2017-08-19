@@ -1,0 +1,25 @@
+
+<!-- Test Element -->
+<dom-module id="test-el">
+    <template>
+        <template is="dom-repeat" items="{{data.parameters}}">
+            <div>
+                <span>{{item.name}}</span> <input value="{{item.val::input}}"/> <a on-click="_remove">remove</a>
+            </div>
+        </template>
+        <br/>
+        <div>VALUE FOR {{data.test}}</div>
+        <div>
+            <input value="{{data.test::input}}"/>
+        </div>
+        <br/>
+    </template>
+</dom-module>
+
+<script>
+    Polymer({
+        is: 'test-el',
+        properties: {},
+        behaviors: [PolyDataSubscriber]
+    })
+</script>

@@ -1,0 +1,126 @@
+
+<!-- Test Element -->
+<dom-module id="object-repeat">
+</dom-module>
+
+<script>
+    Polymer({
+        is: 'object-repeat',
+        properties: {
+            key: {
+                // the key to use in the array of objects
+                // passed into the repeat
+                type: String,
+                value: '_key'
+            },
+            items: {
+                // list of items to apply to the template
+                type: Array
+            },
+            as: {
+                // the the key to use in the template to refer
+                // to the provided array element
+                type: String,
+                value: 'item'
+            },
+            _template: {},
+            _pool: {}
+        },
+        observers:["_rerender(items)", "_rerender(items.splices)", "_itemChanged(items.*)"],
+        behaviors: [Polymer.Templatizer],
+        ready: function() {
+            // Fetch the template and initialize the pool
+            this._pool = {}
+            this._template = Polymer.dom(this).querySelector('template')
+        },
+        _rerender: function(del) {
+            // Set our template as the template to stamp. The
+            // stamp operation is stateful in this way
+            this.templatize(this._template)
+
+            // key track of the keys we used as we instantiate
+            // the array of items
+            const usedKeys = {}
+            const items = this.items
+            for(let i in items) {
+
+                // Initialize the template item for the given key
+                // remove it from the dom if it's already been created
+                // to ensure they're added in the right order
+                const itemKey = this._getKey(items[i])
+                if(!(itemKey in this._pool)) {
+
+                    const stamp = this.stamp(null)
+                    this._pool[itemKey] = {
+                        tempInst : stamp,
+                        element : stamp.root.querySelector('*')
+                    }
+                } else {
+                    Polymer.dom(this).removeChild(this._pool[itemKey].element)
+                }
+                this._pool[itemKey].tempInst.__key = i
+                this._pool[itemKey].tempInst[this.as] = items[i]
+
+                usedKeys[itemKey] = true
+
+                const clone = this._pool[itemKey].element
+                Polymer.dom(this).appendChild(clone)
+            }
+
+            // Delete any remaining unused template objects
+            Object.keys(this._pool).forEach(k => {
+                if(!(k in usedKeys)) {
+                    const el = this._pool[k].element
+                    Polymer.dom(this).removeChild(el)
+                    delete this._pool[k]
+                }
+            })
+        },
+
+        // Fires when a child item changed. Forwards the event
+        // up the tree appropriately
+        _itemChanged: function(del) {
+            const remaining = del.path.replace(/^items./, '')
+            const sp = remaining.split('.')
+            if(sp.length < 2) return
+
+            const index = parseInt(sp.shift().replace('#', ''))
+            const path = sp.join('.')
+            const item = this.items[index]
+
+            const el = this._pool[this._getKey(item)].tempInst
+
+            el.notifyPath(`${this.as}.${path}`, del.value)
+        },
+
+        // Returns the key for the provided item
+        _getKey: function(item) {
+            return item[this.key]
+        },
+
+        // Helper for the templatizer function to forward events
+        // to and from templated elements and parent elements
+        _forwardInstancePath: function(inst, path, value) {
+            const as = this.as
+            if (path.indexOf(`${as}.`) === 0) {
+                const index = inst.__key
+                const remaining = path.slice(this.as.length + 1)
+                this.notifyPath(`items.#${index}.${remaining}`, value)
+            }
+        },
+        _forwardParentProp: function(prop, value) {
+            if(this._pool) this._pool[this._getKey(value)].tempInst.item = value
+        },
+
+        // Not sure when the this function gets called
+        _forwardInstanceProp: function(inst, path, value) {
+            console.error('_forwardInstanceProp not implemented')
+        },
+
+        // This function doesn't seem to provide enough
+        // information to do anything useful?
+        _forwardParentPath: function(path, value) {
+            console.error('_forwardParentPath not implemented')
+        }
+    })
+</script>
